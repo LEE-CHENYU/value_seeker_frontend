@@ -1,13 +1,10 @@
 import React from 'react';
-import './App.css';
+import Dashboard from './components/Dashboard';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>Value Seeker</h1>
-        <p>Your Chrome extension is ready!</p>
-      </header>
+    <div className="w-full h-screen">
+      <Dashboard />
     </div>
   );
 }
