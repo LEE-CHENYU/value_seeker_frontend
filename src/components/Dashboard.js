@@ -1,6 +1,38 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import KlineChart from './KlineChart';
 
 const Dashboard = () => {
+  const [symbol, setSymbol] = useState('AAPL');
+  const [klineData, setKlineData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchKlineData = async (stockSymbol) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`http://localhost:8080/api/kline?symbol=${stockSymbol}`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setKlineData(result.data);
+      } else {
+        setError(result.error || 'Failed to fetch data');
+      }
+    } catch (err) {
+      setError('Failed to fetch kline data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchKlineData(symbol);
+  }, [symbol]);
+
+  const handleSearch = () => {
+    fetchKlineData(symbol);
+  };
+
   return (
     <div className="flex flex-col w-full h-screen bg-gray-100">
       {/* Header */}
@@ -11,8 +43,13 @@ const Dashboard = () => {
             type="text" 
             placeholder="Enter stock symbol..." 
             className="px-3 py-1 border rounded"
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
           />
-          <button className="px-4 py-1 text-white bg-blue-600 rounded hover:bg-blue-700">
+          <button 
+            className="px-4 py-1 text-white bg-blue-600 rounded hover:bg-blue-700"
+            onClick={handleSearch}
+          >
             Search
           </button>
         </div>
@@ -22,11 +59,21 @@ const Dashboard = () => {
       <div className="flex-1 p-4 space-y-4 overflow-auto">
         {/* Chart Section */}
         <div className="p-4 bg-white rounded-lg shadow h-3/5">
-          <h2 className="mb-2 text-lg font-semibold">Price Movement</h2>
-          <div className="h-64 bg-gray-50 border rounded">
-            <div className="flex items-center justify-center h-full text-gray-500">
-              K-line Chart Area
-            </div>
+          <h2 className="mb-2 text-lg font-semibold">Price Movement - {symbol}</h2>
+          <div className="h-[400px] bg-gray-50 border rounded">
+            {loading && (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                Loading...
+              </div>
+            )}
+            {error && (
+              <div className="flex items-center justify-center h-full text-red-500">
+                {error}
+              </div>
+            )}
+            {!loading && !error && klineData.length > 0 && (
+              <KlineChart data={klineData} />
+            )}
           </div>
         </div>
 
