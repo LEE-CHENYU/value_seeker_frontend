@@ -13,7 +13,7 @@ const KlineChart = ({ data }) => {
         textColor: '#333',
       },
       width: chartContainerRef.current.clientWidth,
-      height: 400,
+      height: chartContainerRef.current.clientHeight,
       grid: {
         vertLines: { color: '#f0f0f0' },
         horzLines: { color: '#f0f0f0' },
@@ -40,7 +40,8 @@ const KlineChart = ({ data }) => {
     const handleResize = () => {
       if (chartContainerRef.current) {
         chart.applyOptions({ 
-          width: chartContainerRef.current.clientWidth 
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight
         });
       }
     };
@@ -53,7 +54,7 @@ const KlineChart = ({ data }) => {
     };
   }, [data]);
 
-  return <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />;
+  return <div ref={chartContainerRef} style={{ width: '100%', height: '100%', position: 'relative' }} />;
 };
 
 export default KlineChart; 

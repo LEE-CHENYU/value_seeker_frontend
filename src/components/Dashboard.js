@@ -60,7 +60,7 @@ const Dashboard = () => {
         {/* Chart Section */}
         <div className="p-4 bg-white rounded-lg shadow h-3/5">
           <h2 className="mb-2 text-lg font-semibold">Price Movement - {symbol}</h2>
-          <div className="h-[400px] bg-gray-50 border rounded">
+          <div className="h-[calc(100%-2rem)] bg-gray-50 border rounded">
             {loading && (
               <div className="flex items-center justify-center h-full text-gray-500">
                 Loading...
