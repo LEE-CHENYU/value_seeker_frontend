@@ -4,33 +4,40 @@ import KlineChart from './KlineChart';
 const Dashboard = () => {
   const [symbol, setSymbol] = useState('AAPL');
   const [klineData, setKlineData] = useState([]);
+  const [inflectionPoints, setInflectionPoints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchKlineData = async (stockSymbol) => {
+  const fetchData = async (stockSymbol) => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:8080/api/kline?symbol=${stockSymbol}`);
-      const result = await response.json();
+      const [klineResponse, inflectionResponse] = await Promise.all([
+        fetch(`http://localhost:8080/api/kline?symbol=${stockSymbol}`),
+        fetch(`http://localhost:8080/stock_api/api/v1/inflection-points/${stockSymbol}?api_key=AYTLT9XYXR8L9OSZ`)
+      ]);
+
+      const klineResult = await klineResponse.json();
+      const inflectionResult = await inflectionResponse.json();
       
-      if (result.success) {
-        setKlineData(result.data);
+      if (klineResult.success) {
+        setKlineData(klineResult.data);
+        setInflectionPoints(inflectionResult || []);
       } else {
-        setError(result.error || 'Failed to fetch data');
+        setError(klineResult.error || 'Failed to fetch data');
       }
     } catch (err) {
-      setError('Failed to fetch kline data');
+      setError('Failed to fetch data');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchKlineData(symbol);
+    fetchData(symbol);
   }, [symbol]);
 
   const handleSearch = () => {
-    fetchKlineData(symbol);
+    fetchData(symbol);
   };
 
   return (
@@ -72,7 +79,7 @@ const Dashboard = () => {
               </div>
             )}
             {!loading && !error && klineData.length > 0 && (
-              <KlineChart data={klineData} />
+              <KlineChart data={klineData} inflectionPoints={inflectionPoints} />
             )}
           </div>
         </div>
