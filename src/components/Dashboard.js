@@ -13,7 +13,7 @@ const Dashboard = () => {
       setLoading(true);
       const [klineResponse, inflectionResponse] = await Promise.all([
         fetch(`http://localhost:8080/api/kline?symbol=${stockSymbol}`),
-        fetch(`http://localhost:8080/stock_api/api/v1/inflection-points/${stockSymbol}?api_key=AYTLT9XYXR8L9OSZ`)
+        fetch(`http://localhost:8080/stock_api/api/v1/inflection-points/${stockSymbol}`)
       ]);
 
       const klineResult = await klineResponse.json();
