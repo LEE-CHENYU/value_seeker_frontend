@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import KlineChart from './KlineChart';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
@@ -12,6 +12,7 @@ const Dashboard = () => {
   const [searchInput, setSearchInput] = useState('OXY');
   const [newsData, setNewsData] = useState([]);
   const [newsSummary, setNewsSummary] = useState('');
+  const newsContainerRef = useRef(null);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -160,6 +161,31 @@ const Dashboard = () => {
     }
   };
 
+  const handleChartCursorMove = useCallback((cursorTime) => {
+    if (!newsContainerRef.current || !newsData.length) return;
+
+    // Find the closest news item to the cursor time
+    const closestNews = newsData.reduce((prev, curr) => {
+      const prevDiff = Math.abs(prev.timestamp - cursorTime);
+      const currDiff = Math.abs(curr.timestamp - cursorTime);
+      return currDiff < prevDiff ? curr : prev;
+    });
+
+    // Find the news item element
+    const newsElement = newsContainerRef.current.querySelector(
+      `[data-timestamp="${closestNews.timestamp}"]`
+    );
+
+    if (newsElement) {
+      newsElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // Add highlight effect
+      newsElement.classList.add('bg-blue-50');
+      setTimeout(() => {
+        newsElement.classList.remove('bg-blue-50');
+      }, 1000);
+    }
+  }, [newsData]);
+
   return (
     <div className="flex flex-col w-full h-screen bg-gray-100">
       <header className="flex items-center justify-between p-4 bg-white border-b">
@@ -198,7 +224,11 @@ const Dashboard = () => {
               </div>
             )}
             {!loading && !error && klineData.length > 0 && (
-              <KlineChart data={klineData} inflectionPoints={inflectionPoints} />
+              <KlineChart 
+                data={klineData} 
+                inflectionPoints={inflectionPoints}
+                onCursorMove={handleChartCursorMove}
+              />
             )}
           </div>
         </div>
@@ -219,7 +249,10 @@ const Dashboard = () => {
             </div>
           </div>
           
-          <div className="overflow-auto h-[calc(100%-4rem)]">
+          <div 
+            ref={newsContainerRef}
+            className="overflow-auto h-[calc(100%-4rem)]"
+          >
             {loading ? (
               <div className="flex items-center justify-center h-full text-gray-500">
                 Loading...
@@ -231,12 +264,17 @@ const Dashboard = () => {
             ) : newsData.length > 0 ? (
               <div className="space-y-3 px-1">
                 {newsData.map((item, index) => (
-                  <NewsItem
+                  <div
                     key={`${item.timestamp}-${index}`}
-                    date={item.date}
-                    title={item.title}
-                    priceChange={item.priceChange}
-                  />
+                    data-timestamp={item.timestamp}
+                    className="transition-colors duration-300"
+                  >
+                    <NewsItem
+                      date={item.date}
+                      title={item.title}
+                      priceChange={item.priceChange}
+                    />
+                  </div>
                 ))}
               </div>
             ) : (

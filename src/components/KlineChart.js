@@ -41,14 +41,20 @@ const KlineChart = ({ data, inflectionPoints, onCursorMove }) => {
     candlestickSeries.setData(data);
 
     if (inflectionPoints && inflectionPoints.length > 0) {
-      const markers = inflectionPoints.map(point => ({
-        time: new Date(point.date).getTime() / 1000,
-        position: 'aboveBar',
-        color: '#2196F3',
-        shape: 'circle',
-        text: new Date(point.date).toLocaleDateString(),
-        size: 1
-      }));
+      const firstDataTime = data[0].time;
+      const markers = inflectionPoints
+        .filter(point => {
+          const pointTime = new Date(point.date).getTime() / 1000;
+          return pointTime >= firstDataTime;
+        })
+        .map(point => ({
+          time: new Date(point.date).getTime() / 1000,
+          position: 'aboveBar',
+          color: '#2196F3',
+          shape: 'circle',
+          text: new Date(point.date).toLocaleDateString(),
+          size: 1
+        }));
       
       candlestickSeries.setMarkers(markers);
     }
@@ -83,4 +89,4 @@ const KlineChart = ({ data, inflectionPoints, onCursorMove }) => {
   return <div ref={chartContainerRef} className="w-full h-full" />;
 };
 
-export default KlineChart;
+export default KlineChart; 
