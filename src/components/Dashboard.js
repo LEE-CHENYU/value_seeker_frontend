@@ -1,47 +1,150 @@
 import React, { useState, useEffect } from 'react';
 import KlineChart from './KlineChart';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 
 const Dashboard = () => {
-  const [symbol, setSymbol] = useState('AAPL');
+  const [symbol, setSymbol] = useState('OXY');
   const [klineData, setKlineData] = useState([]);
   const [inflectionPoints, setInflectionPoints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchInput, setSearchInput] = useState('AAPL');
+  const [searchInput, setSearchInput] = useState('OXY');
+  const [newsData, setNewsData] = useState([]);
+  const [newsSummary, setNewsSummary] = useState('');
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      hour12: true
+    });
+  };
+
+  const NewsItem = ({ date, title, priceChange }) => {
+    const priceChangeColor = priceChange >= 0 ? 'bg-green-100' : 'bg-red-100';
+    const priceChangeText = `${(priceChange >= 0 ? '+' : '')}${priceChange.toFixed(2)}%`;
+    
+    return (
+      <div className="p-4 bg-white rounded-lg shadow-sm mb-3">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-gray-700">{date}</span>
+          <span className={`px-3 py-1 rounded-full ${priceChangeColor}`}>
+            {priceChangeText}
+          </span>
+        </div>
+        <p className="text-gray-900">{title}</p>
+      </div>
+    );
+  };
 
   const validateAndFetchData = async (stockSymbol) => {
     try {
       setLoading(true);
       setError(null);
+      console.log(`[News] Starting data fetch for symbol: ${stockSymbol}`);
       
       const searchResponse = await fetch(`http://localhost:8080/stock_api/api/v1/search/${stockSymbol}`);
       const searchResult = await searchResponse.json();
+      console.log('[News] Search response:', searchResult);
       
       if (!searchResponse.ok) {
+        console.error('[News] Invalid stock symbol:', searchResult.error);
         setError(searchResult.error || 'Invalid stock symbol');
         setLoading(false);
         return;
       }
 
-      const [klineResponse, inflectionResponse] = await Promise.all([
+      console.log('[News] Fetching multiple data sources...');
+      const [klineResponse, inflectionResponse, newsResponse] = await Promise.all([
         fetch(`http://localhost:8080/api/kline?symbol=${stockSymbol}`),
-        fetch(`http://localhost:8080/stock_api/api/v1/inflection-points/${stockSymbol}`)
+        fetch(`http://localhost:8080/stock_api/api/v1/inflection-points/${stockSymbol}`),
+        fetch(`http://localhost:8080/stock_api/news/by-inflection/${stockSymbol}`)
       ]);
 
-      const klineResult = await klineResponse.json();
-      const inflectionResult = await inflectionResponse.json();
+      console.log('[News] Response status codes:', {
+        kline: klineResponse.status,
+        inflection: inflectionResponse.status,
+        news: newsResponse.status
+      });
+
+      if (!newsResponse.ok) {
+        console.warn(`[News] News data not available for ${stockSymbol}`, {
+          status: newsResponse.status,
+          statusText: newsResponse.statusText
+        });
+        
+        const rawResponse = await newsResponse.text();
+        console.log('[News] Raw response:', rawResponse);
+        
+        setNewsData([]);
+        setNewsSummary('No market driver data available for this stock.');
+        
+        const klineResult = await klineResponse.json();
+        const inflectionResult = await inflectionResponse.json();
+        
+        if (klineResult.success) {
+          setSymbol(stockSymbol.toUpperCase());
+          setKlineData(klineResult.data);
+          setInflectionPoints(inflectionResult || []);
+        } else {
+          setError(klineResult.error || 'Failed to fetch data');
+        }
+        return;
+      }
+
+      console.log('[News] Parsing JSON responses...');
+      const [klineResult, inflectionResult, newsResult] = await Promise.all([
+        klineResponse.json(),
+        inflectionResponse.json(),
+        newsResponse.json()
+      ]);
+      
+      console.log('[News] Parsed results:', {
+        klineSuccess: klineResult.success,
+        inflectionPointsCount: inflectionResult?.length,
+        newsDataAvailable: Boolean(newsResult?.data)
+      });
       
       if (klineResult.success) {
         setSymbol(stockSymbol.toUpperCase());
         setKlineData(klineResult.data);
         setInflectionPoints(inflectionResult || []);
+        
+        if (newsResult.success && newsResult.data) {
+          console.log('[News] Processing news data...');
+          
+          const newsItems = Object.entries(newsResult.data)
+            .flatMap(([date, data]) => 
+              data.news?.map(article => ({
+                timestamp: new Date(article.news_article.publishedDate).getTime(),
+                date: formatDate(article.news_article.publishedDate),
+                title: article.news_article.title,
+                priceChange: data.inflection?.price_change || 0
+              })) || []
+            )
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+          console.log('[News] Sorted news items:', newsItems);
+          setNewsData(newsItems);
+        } else {
+          console.warn('[News] News data not available or invalid:', newsResult);
+          setNewsData([]);
+          setNewsSummary('No market driver data available for this stock.');
+        }
       } else {
+        console.error('[News] Failed to fetch kline data:', klineResult.error);
         setError(klineResult.error || 'Failed to fetch data');
       }
     } catch (err) {
-      console.error('Error:', err);
+      console.error('[News] Error in validateAndFetchData:', err);
       setError('Failed to fetch data: ' + err.message);
     } finally {
+      console.log('[News] Data fetch completed');
       setLoading(false);
     }
   };
@@ -101,29 +204,46 @@ const Dashboard = () => {
         </div>
 
         <div className="p-4 bg-white rounded-lg shadow h-2/5">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold">Market Drivers</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Market Drivers</h2>
             <div className="flex gap-2">
-              <button className="px-3 py-1 text-sm border rounded hover:bg-gray-50">News</button>
-              <button className="px-3 py-1 text-sm border rounded hover:bg-gray-50">Events</button>
-              <button className="px-3 py-1 text-sm border rounded hover:bg-gray-50">Social</button>
+              <button className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-50 hover:bg-gray-100">
+                News
+              </button>
+              <button className="px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100">
+                Events
+              </button>
+              <button className="px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100">
+                Social
+              </button>
             </div>
           </div>
           
-          <div className="space-y-2 overflow-auto h-48">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="p-3 border rounded hover:bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">2024-03-11 09:30 AM</span>
-                  <span className="px-2 py-1 text-xs text-green-700 bg-green-100 rounded-full">
-                    +2.5%
-                  </span>
-                </div>
-                <p className="mt-1 text-sm">
-                  Company announced breakthrough in AI technology...
-                </p>
+          <div className="overflow-auto h-[calc(100%-4rem)]">
+            {loading ? (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                Loading...
               </div>
-            ))}
+            ) : error ? (
+              <div className="p-4 text-red-600 bg-red-100 rounded-lg">
+                {error}
+              </div>
+            ) : newsData.length > 0 ? (
+              <div className="space-y-3 px-1">
+                {newsData.map((item, index) => (
+                  <NewsItem
+                    key={`${item.timestamp}-${index}`}
+                    date={item.date}
+                    title={item.title}
+                    priceChange={item.priceChange}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                No market driver data available
+              </div>
+            )}
           </div>
         </div>
       </div>
