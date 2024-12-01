@@ -17,24 +17,26 @@ const Dashboard = () => {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
+      year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
       hour12: true
-    });
+    }).replace(',', '').replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2');
   };
 
   const NewsItem = ({ date, title, priceChange }) => {
-    const priceChangeColor = priceChange >= 0 ? 'bg-green-100' : 'bg-red-100';
-    const priceChangeText = `${(priceChange >= 0 ? '+' : '')}${priceChange.toFixed(2)}%`;
+    const priceChangeColor = priceChange >= 0 
+      ? 'bg-green-50 text-green-600' 
+      : 'bg-red-50 text-red-600';
+    const priceChangeText = `${(priceChange >= 0 ? '+' : '')}${priceChange.toFixed(1)}%`;
     
     return (
-      <div className="p-4 bg-white rounded-lg shadow-sm mb-3">
+      <div className="p-4 bg-white rounded-lg shadow-sm mb-3 border-2 border-gray-100 hover:border-gray-200">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-gray-700">{date}</span>
-          <span className={`px-3 py-1 rounded-full ${priceChangeColor}`}>
+          <span className="text-gray-900 font-medium">{date}</span>
+          <span className={`px-3 py-1 rounded-full ${priceChangeColor} font-medium text-sm`}>
             {priceChangeText}
           </span>
         </div>

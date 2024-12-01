@@ -42,9 +42,20 @@
   border-radius: 3px;
 }
 
-/* Hover effect for news items */
+/* Update hover effect for news items */
+.shadow-sm {
+  transition: all 0.2s ease;
+  border: 2px solid #f3f4f6;
+}
+
 .shadow-sm:hover {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   transform: translateY(-1px);
-  transition: all 0.2s ease;
+  border-color: #e5e7eb;
+}
+
+/* Add highlight effect for active news item */
+.bg-blue-50 {
+  border-color: #3b82f6 !important;
+  border-width: 2px !important;
 } 
