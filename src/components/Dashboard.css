@@ -58,4 +58,41 @@
 .bg-blue-50 {
   border-color: #3b82f6 !important;
   border-width: 2px !important;
+}
+
+/* Add line clamp utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hover\:line-clamp-none:hover {
+  -webkit-line-clamp: unset;
+}
+
+/* Add smooth transition for text expansion */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.duration-200 {
+  transition-duration: 200ms;
+}
+
+/* Style for bullet points */
+.list-disc li {
+  line-height: 1.4;
+  padding-left: 0.5rem;
+}
+
+.list-disc li::marker {
+  color: #6B7280; /* gray-500 */
+}
+
+/* Hover state for list container */
+.list-disc:hover {
+  cursor: default;
 } 

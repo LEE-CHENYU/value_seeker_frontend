@@ -26,12 +26,17 @@ const Dashboard = () => {
     }).replace(',', '').replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2');
   };
 
-  const NewsItem = ({ date, title, priceChange }) => {
+  const NewsItem = ({ date, summary, priceChange }) => {
     const priceChangeColor = priceChange >= 0 
       ? 'bg-green-50 text-green-600' 
       : 'bg-red-50 text-red-600';
     const priceChangeText = `${(priceChange >= 0 ? '+' : '')}${priceChange.toFixed(1)}%`;
     
+    // Split summary into bullet points if it's a string
+    const bulletPoints = typeof summary === 'string' 
+      ? summary.split(';').filter(point => point.trim())
+      : Array.isArray(summary) ? summary : [];
+
     return (
       <div className="p-4 bg-white rounded-lg shadow-sm mb-3 border-2 border-gray-100 hover:border-gray-200">
         <div className="flex justify-between items-center mb-2">
@@ -40,7 +45,13 @@ const Dashboard = () => {
             {priceChangeText}
           </span>
         </div>
-        <p className="text-gray-900">{title}</p>
+        <ul className="text-gray-900 space-y-1 pl-5 list-disc">
+          {bulletPoints.map((point, index) => (
+            <li key={index} className="text-sm">
+              {point.trim()}
+            </li>
+          ))}
+        </ul>
       </div>
     );
   };
@@ -121,18 +132,20 @@ const Dashboard = () => {
         if (newsResult.success && newsResult.data) {
           console.log('[News] Processing news data...');
           
+          // Extract and sort news items with bullet point summaries
           const newsItems = Object.entries(newsResult.data)
             .flatMap(([date, data]) => 
               data.news?.map(article => ({
                 timestamp: new Date(article.news_article.publishedDate).getTime(),
                 date: formatDate(article.news_article.publishedDate),
-                title: article.news_article.title,
+                // Keep key_points as an array or split string into array
+                summary: article.market_event?.key_points || [],
                 priceChange: data.inflection?.price_change || 0
               })) || []
             )
             .sort((a, b) => b.timestamp - a.timestamp);
 
-          console.log('[News] Sorted news items:', newsItems);
+          console.log('[News] Sorted news items with summaries:', newsItems);
           setNewsData(newsItems);
         } else {
           console.warn('[News] News data not available or invalid:', newsResult);
@@ -273,7 +286,7 @@ const Dashboard = () => {
                   >
                     <NewsItem
                       date={item.date}
-                      title={item.title}
+                      summary={item.summary}
                       priceChange={item.priceChange}
                     />
                   </div>
