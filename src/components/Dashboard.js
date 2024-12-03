@@ -3,6 +3,76 @@ import KlineChart from './KlineChart';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
+const MAX_MODEL_CHARS = 4000;
+
+const summarizeContent = async (articles, config = {
+  type: 'Key Points',
+  format: 'Markdown',
+  length: 'Short'
+}) => {
+  try {
+    if (!window.ai || !window.ai.summarizer) {
+      throw new Error('AI Summarization is not supported in this browser');
+    }
+
+    // Prepare the content to summarize
+    const content = articles.map(article => {
+      return `
+Title: ${article.title || 'N/A'}
+Source: ${article.source || 'N/A'}
+Content: ${article.content || ''}
+      `.trim();
+    }).join('\n\n');
+
+    if (content.length > MAX_MODEL_CHARS) {
+      console.warn('Content too long for summarization, truncating...');
+      return {
+        summary: 'Content too long for detailed summarization',
+        keyFindings: [],
+        riskFactors: []
+      };
+    }
+
+    // Create summarizer session
+    const session = await window.ai.summarizer.create(config);
+    await session.ready;
+
+    // Generate summary
+    const summary = await session.summarize(content);
+    session.destroy();
+
+    // Parse the summary into structured format
+    const sections = summary.split('\n\n').reduce((acc, section) => {
+      if (section.startsWith('Key Findings:')) {
+        acc.keyFindings = section
+          .replace('Key Findings:', '')
+          .split('\n')
+          .map(point => point.trim())
+          .filter(point => point);
+      } else if (section.startsWith('Risk Factors:')) {
+        acc.riskFactors = section
+          .replace('Risk Factors:', '')
+          .split('\n')
+          .map(point => point.trim())
+          .filter(point => point);
+      } else {
+        acc.summary = section.trim();
+      }
+      return acc;
+    }, { summary: '', keyFindings: [], riskFactors: [] });
+
+    return sections;
+
+  } catch (e) {
+    console.error('Summarization failed:', e);
+    return {
+      summary: 'Failed to generate summary',
+      keyFindings: [],
+      riskFactors: []
+    };
+  }
+};
+
 const Dashboard = () => {
   const [symbol, setSymbol] = useState('OXY');
   const [klineData, setKlineData] = useState([]);
@@ -309,96 +379,54 @@ const Dashboard = () => {
         if (newsResult.success && newsResult.data) {
           console.log('[News] Processing news data...');
           
-          // Extract and sort news items with bullet point summaries
-          const newsItems = Object.entries(newsResult.data)
-            .map(([date, data]) => {
+          // Add these constants at the top of the file
+          const MAX_MODEL_CHARS = 4000;
+
+          // Modify the news processing part in validateAndFetchData
+          const newsItems = await Promise.all(Object.entries(newsResult.data)
+            .map(async ([date, data]) => {
               if (!Array.isArray(data.news) || data.news.length === 0) {
                 return null;
               }
 
-              // Aggregate all key points and information across articles
-              const aggregatedData = data.news.reduce((acc, article) => {
-                // Combine key points
-                const keyPoints = article.market_event?.key_points || [];
-                acc.summary = [...new Set([...acc.summary, ...keyPoints])];
+              // Prepare articles for summarization
+              const articles = data.news.map(article => ({
+                title: article.news_article?.title,
+                source: article.news_article?.source,
+                content: article.news_article?.content,
+                publishedDate: article.news_article?.publishedDate,
+                url: article.news_article?.url
+              }));
 
-                // Combine analysis
-                if (article.analysis) {
-                  acc.analysis.key_findings = [...new Set([...acc.analysis.key_findings, ...(article.analysis.key_findings || [])])];
-                  acc.analysis.risk_factors = [...new Set([...acc.analysis.risk_factors, ...(article.analysis.risk_factors || [])])];
-                }
-
-                // Collect all news articles
-                acc.news_articles.push({
-                  title: article.news_article?.title,
-                  source: article.news_article?.source,
-                  type: article.news_article?.type,
-                  publishedDate: article.news_article?.publishedDate,
-                  url: article.news_article?.url
-                });
-
-                // Take the highest severity and confidence from event classifications
-                if (article.event_classification) {
-                  acc.eventClassification.severity = Math.max(
-                    acc.eventClassification.severity || 0,
-                    article.event_classification.severity || 0
-                  );
-                  acc.eventClassification.confidence = Math.max(
-                    acc.eventClassification.confidence || 0,
-                    article.event_classification.confidence || 0
-                  );
-                  
-                  // Collect unique types
-                  if (article.event_classification.primary_type) {
-                    acc.eventClassification.primary_types.add(article.event_classification.primary_type);
-                  }
-                  if (article.event_classification.sub_type) {
-                    acc.eventClassification.sub_types.add(article.event_classification.sub_type);
-                  }
-                  if (article.event_classification.impact_duration) {
-                    acc.eventClassification.impact_durations.add(article.event_classification.impact_duration);
-                  }
-                }
-
-                return acc;
-              }, {
-                summary: [],
-                analysis: { key_findings: [], risk_factors: [] },
-                news_articles: [],
-                eventClassification: {
-                  primary_types: new Set(),
-                  sub_types: new Set(),
-                  impact_durations: new Set(),
-                  severity: 0,
-                  confidence: 0
-                }
-              });
-
-              // Get the timestamp from the first article (they should be for same inflection point)
-              const timestamp = new Date(data.news[0].news_article.publishedDate).getTime();
+              // Generate summary using on-device AI
+              const summarized = await summarizeContent(articles);
 
               return {
-                timestamp,
+                timestamp: new Date(data.news[0].news_article.publishedDate).getTime(),
                 date: formatDate(data.news[0].news_article.publishedDate),
-                summary: aggregatedData.summary,
+                summary: summarized.summary,
+                analysis: {
+                  key_findings: summarized.keyFindings,
+                  risk_factors: summarized.riskFactors
+                },
                 priceChange: data.inflection?.price_change || 0,
                 eventClassification: {
-                  primary_type: Array.from(aggregatedData.eventClassification.primary_types).join(', '),
-                  sub_type: Array.from(aggregatedData.eventClassification.sub_types).join(', '),
-                  severity: aggregatedData.eventClassification.severity,
-                  confidence: aggregatedData.eventClassification.confidence,
-                  impact_duration: Array.from(aggregatedData.eventClassification.impact_durations).join(', ')
+                  primary_type: data.news[0].event_classification?.primary_type,
+                  sub_type: data.news[0].event_classification?.sub_type,
+                  severity: Math.max(...data.news.map(n => n.event_classification?.severity || 0)),
+                  confidence: Math.max(...data.news.map(n => n.event_classification?.confidence || 0)),
+                  impact_duration: data.news[0].event_classification?.impact_duration
                 },
-                newsArticle: aggregatedData.news_articles,
-                analysis: aggregatedData.analysis,
-                market_event: data.news[0].market_event // Keep the market event type from first article
+                newsArticle: articles,
+                market_event: data.news[0].market_event
               };
-            })
-            .filter(Boolean) // Remove null entries
+            }));
+
+          const validNewsItems = newsItems
+            .filter(Boolean)
             .sort((a, b) => b.timestamp - a.timestamp);
 
-          console.log('[News] Sorted news items with summaries:', newsItems);
-          setNewsData(newsItems);
+          setNewsData(validNewsItems);
         } else {
           console.warn('[News] News data not available or invalid:', newsResult);
           setNewsData([]);
