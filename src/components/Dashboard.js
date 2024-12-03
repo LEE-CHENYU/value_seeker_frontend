@@ -343,17 +343,17 @@ const Dashboard = () => {
     <div className="flex flex-col w-full h-screen bg-gray-100">
       <header className="flex items-center justify-between p-4 bg-white border-b">
         <h1 className="text-xl font-bold">FindMarketDriver</h1>
-        <form onSubmit={handleSearch} className="flex gap-2">
+        <form onSubmit={handleSearch} className="flex gap-2 flex-1 max-w-md ml-4">
           <input 
             type="text" 
             placeholder="Enter stock symbol..." 
-            className="px-3 py-1 border rounded"
+            className="px-3 py-1 border rounded flex-1"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value.toUpperCase())}
           />
           <button 
             type="submit"
-            className="px-4 py-1 text-white bg-blue-600 rounded hover:bg-blue-700"
+            className="px-4 py-1 text-white bg-blue-600 rounded hover:bg-blue-700 whitespace-nowrap"
             disabled={loading}
           >
             {loading ? 'Loading...' : 'Search'}
