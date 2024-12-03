@@ -26,13 +26,13 @@ const Dashboard = () => {
     }).replace(',', '').replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2');
   };
 
-  const NewsItem = ({ date, summary, priceChange, eventClassification }) => {
+  const NewsItem = ({ date, summary, priceChange, eventClassification, newsArticle, analysis, marketEvent }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
     const priceChangeColor = priceChange >= 0 
       ? 'bg-green-50 text-green-600' 
       : 'bg-red-50 text-red-600';
     const priceChangeText = `${(priceChange >= 0 ? '+' : '')}${priceChange.toFixed(1)}%`;
     
-    // Get tag color for primary type only
     const getPrimaryTagColor = (type) => {
       const colors = {
         'Market': 'bg-blue-100 text-blue-800',
@@ -44,7 +44,6 @@ const Dashboard = () => {
       return colors[type] || 'bg-gray-100 text-gray-800';
     };
 
-    // Get severity color
     const getSeverityColor = (severity) => {
       const colors = {
         1: 'text-gray-600',
@@ -61,7 +60,10 @@ const Dashboard = () => {
       : Array.isArray(summary) ? summary : [];
 
     return (
-      <div className="p-4 bg-white rounded-lg shadow-sm mb-3 border-2 border-gray-100 hover:border-gray-200">
+      <div 
+        className="p-4 bg-white rounded-lg shadow-sm mb-3 border-2 border-gray-100 hover:border-gray-200 cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
         <div className="flex justify-between items-center mb-2">
           <span className="text-gray-900 font-medium">{date}</span>
           <span className={`px-3 py-1 rounded-full ${priceChangeColor} font-medium text-sm`}>
@@ -69,7 +71,6 @@ const Dashboard = () => {
           </span>
         </div>
         
-        {/* Event Classification - Primary and Sub-type */}
         {eventClassification && (
           <div className="mb-3">
             <div className="flex items-center gap-2">
@@ -95,7 +96,54 @@ const Dashboard = () => {
           ))}
         </ul>
 
-        {/* Metadata tags at the bottom */}
+        {isExpanded && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            {newsArticle && (
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold mb-2">Article Details</h4>
+                <div className="space-y-1 text-sm">
+                  {newsArticle.title && <p><span className="font-medium">Title:</span> {newsArticle.title}</p>}
+                  {newsArticle.source && <p><span className="font-medium">Source:</span> {newsArticle.source}</p>}
+                  {newsArticle.type && <p><span className="font-medium">Type:</span> {newsArticle.type}</p>}
+                </div>
+              </div>
+            )}
+
+            {analysis && (analysis.key_findings.length > 0 || analysis.risk_factors.length > 0) && (
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold mb-2">Analysis</h4>
+                {analysis.key_findings.length > 0 && (
+                  <div className="mb-2">
+                    <p className="text-xs font-medium text-gray-600 mb-1">Key Findings:</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                      {analysis.key_findings.map((finding, index) => (
+                        <li key={index} className="text-sm">{finding}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {analysis.risk_factors.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1">Risk Factors:</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                      {analysis.risk_factors.map((risk, index) => (
+                        <li key={index} className="text-sm text-red-600">{risk}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {marketEvent && marketEvent.type && (
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold mb-2">Event Details</h4>
+                <p className="text-sm"><span className="font-medium">Type:</span> {marketEvent.type}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {eventClassification && (
           <div className="flex items-center gap-3 text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
             {eventClassification.severity && (
@@ -209,6 +257,28 @@ const Dashboard = () => {
                   severity: article.event_classification?.severity,
                   confidence: article.event_classification?.confidence,
                   impact_duration: article.event_classification?.impact_duration
+                },
+                news_article: {
+                  title: article.news_article?.title,
+                  source: article.news_article?.source,
+                  type: article.news_article?.type,
+                  publishedDate: article.news_article?.publishedDate,
+                  url: article.news_article?.url
+                },
+                analysis: {
+                  key_findings: article.analysis?.key_findings || [],
+                  sentiment: article.analysis?.sentiment,
+                  risk_factors: article.analysis?.risk_factors || []
+                },
+                market_event: {
+                  type: article.market_event?.type,
+                  key_points: article.market_event?.key_points || [],
+                  major_shareholders: article.market_event?.major_shareholders || []
+                },
+                company: {
+                  ticker: article.company?.ticker,
+                  name: article.company?.name,
+                  exchange: article.company?.exchange
                 }
               })) || []
             )
@@ -348,18 +418,16 @@ const Dashboard = () => {
             ) : newsData.length > 0 ? (
               <div className="space-y-3 px-1">
                 {newsData.map((item, index) => (
-                  <div
+                  <NewsItem
                     key={`${item.timestamp}-${index}`}
-                    data-timestamp={item.timestamp}
-                    className="transition-colors duration-300"
-                  >
-                    <NewsItem
-                      date={item.date}
-                      summary={item.summary}
-                      priceChange={item.priceChange}
-                      eventClassification={item.eventClassification}
-                    />
-                  </div>
+                    date={item.date}
+                    summary={item.summary}
+                    priceChange={item.priceChange}
+                    eventClassification={item.eventClassification}
+                    newsArticle={item.news_article}
+                    analysis={item.analysis}
+                    marketEvent={item.market_event}
+                  />
                 ))}
               </div>
             ) : (
