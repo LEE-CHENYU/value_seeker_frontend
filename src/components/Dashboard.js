@@ -437,7 +437,7 @@ const Dashboard = () => {
           </div>
         )}
         
-        <div className="p-4 bg-white rounded-lg shadow h-3/5">
+        <div className="p-4 bg-white rounded-lg shadow h-2/5">
           <h2 className="mb-2 text-lg font-semibold">Price Movement - {symbol}</h2>
           <div className="h-[calc(100%-2rem)] bg-gray-50 border rounded">
             {loading && (
@@ -455,7 +455,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="p-4 bg-white rounded-lg shadow h-2/5">
+        <div className="p-4 bg-white rounded-lg shadow h-3/5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold">Market Drivers</h2>
             <div className="flex gap-2">
