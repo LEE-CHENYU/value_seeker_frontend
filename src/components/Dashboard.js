@@ -26,13 +26,36 @@ const Dashboard = () => {
     }).replace(',', '').replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2');
   };
 
-  const NewsItem = ({ date, summary, priceChange }) => {
+  const NewsItem = ({ date, summary, priceChange, eventClassification }) => {
     const priceChangeColor = priceChange >= 0 
       ? 'bg-green-50 text-green-600' 
       : 'bg-red-50 text-red-600';
     const priceChangeText = `${(priceChange >= 0 ? '+' : '')}${priceChange.toFixed(1)}%`;
     
-    // Split summary into bullet points if it's a string
+    // Get tag color for primary type only
+    const getPrimaryTagColor = (type) => {
+      const colors = {
+        'Market': 'bg-blue-100 text-blue-800',
+        'Financial': 'bg-purple-100 text-purple-800',
+        'Corporate Governance': 'bg-orange-100 text-orange-800',
+        'Environmental': 'bg-green-100 text-green-800',
+        'Product': 'bg-yellow-100 text-yellow-800',
+      };
+      return colors[type] || 'bg-gray-100 text-gray-800';
+    };
+
+    // Get severity color
+    const getSeverityColor = (severity) => {
+      const colors = {
+        1: 'text-gray-600',
+        2: 'text-blue-600',
+        3: 'text-yellow-600',
+        4: 'text-orange-600',
+        5: 'text-red-600'
+      };
+      return colors[severity] || 'text-gray-600';
+    };
+
     const bulletPoints = typeof summary === 'string' 
       ? summary.split(';').filter(point => point.trim())
       : Array.isArray(summary) ? summary : [];
@@ -45,13 +68,53 @@ const Dashboard = () => {
             {priceChangeText}
           </span>
         </div>
-        <ul className="text-gray-900 space-y-1 pl-5 list-disc">
+        
+        {/* Event Classification - Primary and Sub-type */}
+        {eventClassification && (
+          <div className="mb-3">
+            <div className="flex items-center gap-2">
+              {eventClassification.primary_type && (
+                <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${getPrimaryTagColor(eventClassification.primary_type)}`}>
+                  {eventClassification.primary_type}
+                </span>
+              )}
+              {eventClassification.sub_type && (
+                <span className="text-xs text-gray-500">
+                  {eventClassification.sub_type}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <ul className="text-gray-900 space-y-1 pl-5 list-disc mb-3">
           {bulletPoints.map((point, index) => (
             <li key={index} className="text-sm">
               {point.trim()}
             </li>
           ))}
         </ul>
+
+        {/* Metadata tags at the bottom */}
+        {eventClassification && (
+          <div className="flex items-center gap-3 text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
+            {eventClassification.severity && (
+              <span className={`${getSeverityColor(eventClassification.severity)}`}>
+                Severity {eventClassification.severity}
+              </span>
+            )}
+            {eventClassification.confidence && (
+              <span>
+                {Math.round(eventClassification.confidence * 100)}% confidence
+              </span>
+            )}
+            {eventClassification.impact_duration && (
+              <span>
+                {eventClassification.impact_duration.replace(/_/g, ' ').toLowerCase()}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -138,9 +201,15 @@ const Dashboard = () => {
               data.news?.map(article => ({
                 timestamp: new Date(article.news_article.publishedDate).getTime(),
                 date: formatDate(article.news_article.publishedDate),
-                // Keep key_points as an array or split string into array
                 summary: article.market_event?.key_points || [],
-                priceChange: data.inflection?.price_change || 0
+                priceChange: data.inflection?.price_change || 0,
+                eventClassification: {
+                  primary_type: article.event_classification?.primary_type,
+                  sub_type: article.event_classification?.sub_type,
+                  severity: article.event_classification?.severity,
+                  confidence: article.event_classification?.confidence,
+                  impact_duration: article.event_classification?.impact_duration
+                }
               })) || []
             )
             .sort((a, b) => b.timestamp - a.timestamp);
@@ -288,6 +357,7 @@ const Dashboard = () => {
                       date={item.date}
                       summary={item.summary}
                       priceChange={item.priceChange}
+                      eventClassification={item.eventClassification}
                     />
                   </div>
                 ))}
