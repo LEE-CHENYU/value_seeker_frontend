@@ -59,6 +59,42 @@ const Dashboard = () => {
       ? summary.split(';').filter(point => point.trim())
       : Array.isArray(summary) ? summary : [];
 
+    const summarizeAnalysis = () => {
+      const allFindings = new Set();
+      const allRisks = new Set();
+      
+      if (Array.isArray(analysis)) {
+        analysis.forEach(a => {
+          a.key_findings?.forEach(f => allFindings.add(f));
+          a.risk_factors?.forEach(r => allRisks.add(r));
+        });
+      } else if (analysis) {
+        analysis.key_findings?.forEach(f => allFindings.add(f));
+        analysis.risk_factors?.forEach(r => allRisks.add(r));
+      }
+
+      return {
+        findings: Array.from(allFindings),
+        risks: Array.from(allRisks)
+      };
+    };
+
+    const summarizeArticles = () => {
+      const articles = !Array.isArray(newsArticle) ? [newsArticle] : newsArticle;
+      return articles.reduce((acc, article) => {
+        if (!article) return acc;
+        const type = article.type || 'Other';
+        if (!acc[type]) acc[type] = [];
+        acc[type].push(article);
+        return acc;
+      }, {});
+    };
+
+    const articles = summarizeArticles();
+    const totalArticles = Object.values(articles).flat().length;
+
+    const { findings, risks } = summarizeAnalysis();
+
     return (
       <div 
         data-timestamp={timestamp}
@@ -99,35 +135,68 @@ const Dashboard = () => {
 
         {isExpanded && (
           <div className="mt-4 pt-4 border-t border-gray-100">
-            {newsArticle && (
+            {totalArticles > 0 && (
               <div className="mb-4">
-                <h4 className="text-sm font-semibold mb-2">Article Details</h4>
-                <div className="space-y-1 text-sm">
-                  {newsArticle.title && <p><span className="font-medium">Title:</span> {newsArticle.title}</p>}
-                  {newsArticle.source && <p><span className="font-medium">Source:</span> {newsArticle.source}</p>}
-                  {newsArticle.type && <p><span className="font-medium">Type:</span> {newsArticle.type}</p>}
-                </div>
+                <h4 className="text-sm font-semibold mb-2">Related Articles ({totalArticles})</h4>
+                {Object.entries(articles).map(([type, typeArticles]) => (
+                  <div key={type} className="mb-4">
+                    <h5 className="text-xs font-medium text-gray-600 mb-2">{type} ({typeArticles.length})</h5>
+                    <div className="space-y-3">
+                      {typeArticles.map((article, idx) => (
+                        <div key={idx} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                          <div className="space-y-1 text-sm">
+                            {article?.title && (
+                              <p>
+                                <span className="font-medium">Title: </span>
+                                {article.url ? (
+                                  <a 
+                                    href={article.url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {article.title}
+                                  </a>
+                                ) : (
+                                  article.title
+                                )}
+                              </p>
+                            )}
+                            {article?.source && <p><span className="font-medium">Source: </span>{article.source}</p>}
+                            {article?.publishedDate && (
+                              <p>
+                                <span className="font-medium">Published: </span>
+                                {formatDate(article.publishedDate)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
-            {analysis && (analysis.key_findings.length > 0 || analysis.risk_factors.length > 0) && (
+            {(findings.length > 0 || risks.length > 0) && (
               <div className="mb-4">
-                <h4 className="text-sm font-semibold mb-2">Analysis</h4>
-                {analysis.key_findings.length > 0 && (
+                <h4 className="text-sm font-semibold mb-2">Analysis Summary</h4>
+                {findings.length > 0 && (
                   <div className="mb-2">
                     <p className="text-xs font-medium text-gray-600 mb-1">Key Findings:</p>
                     <ul className="list-disc pl-4 space-y-1">
-                      {analysis.key_findings.map((finding, index) => (
+                      {findings.map((finding, index) => (
                         <li key={index} className="text-sm">{finding}</li>
                       ))}
                     </ul>
                   </div>
                 )}
-                {analysis.risk_factors.length > 0 && (
+                {risks.length > 0 && (
                   <div>
                     <p className="text-xs font-medium text-gray-600 mb-1">Risk Factors:</p>
                     <ul className="list-disc pl-4 space-y-1">
-                      {analysis.risk_factors.map((risk, index) => (
+                      {risks.map((risk, index) => (
                         <li key={index} className="text-sm text-red-600">{risk}</li>
                       ))}
                     </ul>
