@@ -26,7 +26,7 @@ const Dashboard = () => {
     }).replace(',', '').replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2');
   };
 
-  const NewsItem = ({ date, summary, priceChange, eventClassification, newsArticle, analysis, marketEvent }) => {
+  const NewsItem = ({ timestamp, date, summary, priceChange, eventClassification, newsArticle, analysis, marketEvent }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const priceChangeColor = priceChange >= 0 
       ? 'bg-green-50 text-green-600' 
@@ -61,7 +61,8 @@ const Dashboard = () => {
 
     return (
       <div 
-        className="p-4 bg-white rounded-lg shadow-sm mb-3 border-2 border-gray-100 hover:border-gray-200 cursor-pointer"
+        data-timestamp={timestamp}
+        className="p-4 bg-white rounded-lg shadow-sm mb-3 border-2 border-gray-100 hover:border-gray-200 cursor-pointer transition-colors duration-200"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex justify-between items-center mb-2">
@@ -420,6 +421,7 @@ const Dashboard = () => {
                 {newsData.map((item, index) => (
                   <NewsItem
                     key={`${item.timestamp}-${index}`}
+                    timestamp={item.timestamp}
                     date={item.date}
                     summary={item.summary}
                     priceChange={item.priceChange}
