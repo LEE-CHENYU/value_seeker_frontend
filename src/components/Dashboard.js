@@ -311,43 +311,90 @@ const Dashboard = () => {
           
           // Extract and sort news items with bullet point summaries
           const newsItems = Object.entries(newsResult.data)
-            .flatMap(([date, data]) => 
-              data.news?.map(article => ({
-                timestamp: new Date(article.news_article.publishedDate).getTime(),
-                date: formatDate(article.news_article.publishedDate),
-                summary: article.market_event?.key_points || [],
-                priceChange: data.inflection?.price_change || 0,
-                eventClassification: {
-                  primary_type: article.event_classification?.primary_type,
-                  sub_type: article.event_classification?.sub_type,
-                  severity: article.event_classification?.severity,
-                  confidence: article.event_classification?.confidence,
-                  impact_duration: article.event_classification?.impact_duration
-                },
-                news_article: {
+            .map(([date, data]) => {
+              if (!Array.isArray(data.news) || data.news.length === 0) {
+                return null;
+              }
+
+              // Aggregate all key points and information across articles
+              const aggregatedData = data.news.reduce((acc, article) => {
+                // Combine key points
+                const keyPoints = article.market_event?.key_points || [];
+                acc.summary = [...new Set([...acc.summary, ...keyPoints])];
+
+                // Combine analysis
+                if (article.analysis) {
+                  acc.analysis.key_findings = [...new Set([...acc.analysis.key_findings, ...(article.analysis.key_findings || [])])];
+                  acc.analysis.risk_factors = [...new Set([...acc.analysis.risk_factors, ...(article.analysis.risk_factors || [])])];
+                }
+
+                // Collect all news articles
+                acc.news_articles.push({
                   title: article.news_article?.title,
                   source: article.news_article?.source,
                   type: article.news_article?.type,
                   publishedDate: article.news_article?.publishedDate,
                   url: article.news_article?.url
-                },
-                analysis: {
-                  key_findings: article.analysis?.key_findings || [],
-                  sentiment: article.analysis?.sentiment,
-                  risk_factors: article.analysis?.risk_factors || []
-                },
-                market_event: {
-                  type: article.market_event?.type,
-                  key_points: article.market_event?.key_points || [],
-                  major_shareholders: article.market_event?.major_shareholders || []
-                },
-                company: {
-                  ticker: article.company?.ticker,
-                  name: article.company?.name,
-                  exchange: article.company?.exchange
+                });
+
+                // Take the highest severity and confidence from event classifications
+                if (article.event_classification) {
+                  acc.eventClassification.severity = Math.max(
+                    acc.eventClassification.severity || 0,
+                    article.event_classification.severity || 0
+                  );
+                  acc.eventClassification.confidence = Math.max(
+                    acc.eventClassification.confidence || 0,
+                    article.event_classification.confidence || 0
+                  );
+                  
+                  // Collect unique types
+                  if (article.event_classification.primary_type) {
+                    acc.eventClassification.primary_types.add(article.event_classification.primary_type);
+                  }
+                  if (article.event_classification.sub_type) {
+                    acc.eventClassification.sub_types.add(article.event_classification.sub_type);
+                  }
+                  if (article.event_classification.impact_duration) {
+                    acc.eventClassification.impact_durations.add(article.event_classification.impact_duration);
+                  }
                 }
-              })) || []
-            )
+
+                return acc;
+              }, {
+                summary: [],
+                analysis: { key_findings: [], risk_factors: [] },
+                news_articles: [],
+                eventClassification: {
+                  primary_types: new Set(),
+                  sub_types: new Set(),
+                  impact_durations: new Set(),
+                  severity: 0,
+                  confidence: 0
+                }
+              });
+
+              // Get the timestamp from the first article (they should be for same inflection point)
+              const timestamp = new Date(data.news[0].news_article.publishedDate).getTime();
+
+              return {
+                timestamp,
+                date: formatDate(data.news[0].news_article.publishedDate),
+                summary: aggregatedData.summary,
+                priceChange: data.inflection?.price_change || 0,
+                eventClassification: {
+                  primary_type: Array.from(aggregatedData.eventClassification.primary_types).join(', '),
+                  sub_type: Array.from(aggregatedData.eventClassification.sub_types).join(', '),
+                  severity: aggregatedData.eventClassification.severity,
+                  confidence: aggregatedData.eventClassification.confidence,
+                  impact_duration: Array.from(aggregatedData.eventClassification.impact_durations).join(', ')
+                },
+                newsArticle: aggregatedData.news_articles,
+                analysis: aggregatedData.analysis,
+                market_event: data.news[0].market_event // Keep the market event type from first article
+              };
+            })
+            .filter(Boolean) // Remove null entries
             .sort((a, b) => b.timestamp - a.timestamp);
 
           console.log('[News] Sorted news items with summaries:', newsItems);
@@ -493,9 +540,9 @@ const Dashboard = () => {
                     summary={item.summary}
                     priceChange={item.priceChange}
                     eventClassification={item.eventClassification}
-                    newsArticle={item.news_article}
+                    newsArticle={item.newsArticle}
                     analysis={item.analysis}
-                    marketEvent={item.market_event}
+                    marketEvent={item.marketEvent}
                   />
                 ))}
               </div>
