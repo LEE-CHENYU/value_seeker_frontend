@@ -168,7 +168,7 @@ const Dashboard = () => {
     );
   };
 
-  const validateAndFetchData = async (stockSymbol) => {
+  const validateAndFetchData = useCallback(async (stockSymbol) => {
     try {
       setLoading(true);
       setError(null);
@@ -199,16 +199,12 @@ const Dashboard = () => {
       });
 
       if (!newsResponse.ok) {
-        console.warn(`[News] News data not available for ${stockSymbol}`, {
-          status: newsResponse.status,
-          statusText: newsResponse.statusText
-        });
+        console.warn(`[News] News data not available for ${stockSymbol}`);
+        setNewsData([]);
+        setNewsSummary('No market driver data available for this stock.');
         
         const rawResponse = await newsResponse.text();
         console.log('[News] Raw response:', rawResponse);
-        
-        setNewsData([]);
-        setNewsSummary('No market driver data available for this stock.');
         
         const klineResult = await klineResponse.json();
         const inflectionResult = await inflectionResponse.json();
@@ -299,11 +295,13 @@ const Dashboard = () => {
     } catch (err) {
       console.error('[News] Error in validateAndFetchData:', err);
       setError('Failed to fetch data: ' + err.message);
+      setNewsData([]);
+      setNewsSummary('Error loading market driver data.');
     } finally {
       console.log('[News] Data fetch completed');
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     validateAndFetchData(symbol);
