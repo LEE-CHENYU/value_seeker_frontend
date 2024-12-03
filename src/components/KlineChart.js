@@ -4,6 +4,9 @@ import { createChart } from 'lightweight-charts';
 const KlineChart = ({ data, inflectionPoints, onCursorMove }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
+  const candlestickSeriesRef = useRef(null);
+  const lastCursorTimeRef = useRef(null);
+  const lastActivePointRef = useRef(null);
 
   useEffect(() => {
     if (!chartContainerRef.current || !data.length) return;
@@ -37,10 +40,14 @@ const KlineChart = ({ data, inflectionPoints, onCursorMove }) => {
       wickUpColor: '#26a69a',
       wickDownColor: '#ef5350',
     });
+    candlestickSeriesRef.current = candlestickSeries;
 
     candlestickSeries.setData(data);
 
-    if (inflectionPoints && inflectionPoints.length > 0) {
+    // Initial markers setup
+    const setupInitialMarkers = () => {
+      if (!inflectionPoints?.length) return;
+      
       const firstDataTime = data[0].time;
       const markers = inflectionPoints
         .filter(point => {
@@ -52,20 +59,69 @@ const KlineChart = ({ data, inflectionPoints, onCursorMove }) => {
           position: 'aboveBar',
           color: '#2196F3',
           shape: 'circle',
-          text: new Date(point.date).toLocaleDateString(),
+          text: '',
           size: 1
         }));
       
       candlestickSeries.setMarkers(markers);
-    }
+    };
 
+    setupInitialMarkers();
     chart.timeScale().fitContent();
 
-    // Add crosshair move handler
+    // Update crosshair move handler
     chart.subscribeCrosshairMove(param => {
-      if (param.time) {
-        const cursorTime = param.time * 1000; // Convert to milliseconds
-        onCursorMove(cursorTime);
+      if (!param.time || !inflectionPoints?.length) {
+        // Clear last active point when cursor leaves chart
+        if (lastActivePointRef.current !== null) {
+          setupInitialMarkers();
+          lastActivePointRef.current = null;
+        }
+        return;
+      }
+
+      const cursorTime = param.time * 1000;
+      if (cursorTime === lastCursorTimeRef.current) return;
+      
+      lastCursorTimeRef.current = cursorTime;
+      onCursorMove(cursorTime);
+
+      // Find the nearest inflection point
+      const DETECTION_RANGE = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+      let nearestPoint = null;
+      let minTimeDiff = Infinity;
+
+      inflectionPoints.forEach(point => {
+        const pointTime = new Date(point.date).getTime();
+        const timeDiff = Math.abs(cursorTime - pointTime);
+        
+        if (timeDiff < DETECTION_RANGE && timeDiff < minTimeDiff) {
+          minTimeDiff = timeDiff;
+          nearestPoint = point;
+        }
+      });
+
+      // Only update markers if the nearest point has changed
+      if (nearestPoint?.date !== lastActivePointRef.current) {
+        lastActivePointRef.current = nearestPoint?.date;
+
+        const firstDataTime = data[0].time;
+        const markers = inflectionPoints
+          .filter(point => {
+            const pointTime = new Date(point.date).getTime() / 1000;
+            return pointTime >= firstDataTime;
+          })
+          .map(point => ({
+            time: new Date(point.date).getTime() / 1000,
+            position: 'aboveBar',
+            color: '#2196F3',
+            shape: 'circle',
+            text: point.date === nearestPoint?.date ? 
+              new Date(point.date).toLocaleDateString() : '',
+            size: 1
+          }));
+
+        candlestickSeries.setMarkers(markers);
       }
     });
 
