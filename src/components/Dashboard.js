@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import KlineChart from './KlineChart';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { debounce } from 'lodash';
 
 const MAX_MODEL_CHARS = 4000;
 
@@ -90,6 +91,7 @@ const Dashboard = () => {
   const [newsData, setNewsData] = useState([]);
   const [newsSummary, setNewsSummary] = useState('');
   const newsContainerRef = useRef(null);
+  const [loadingSummaries, setLoadingSummaries] = useState({});
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -103,12 +105,39 @@ const Dashboard = () => {
     }).replace(',', '').replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2');
   };
 
-  const NewsItem = ({ timestamp, date, summary, priceChange, eventClassification, newsArticle, analysis, marketEvent }) => {
+  const summarizeArticle = async (itemIndex) => {
+    // Check if summary is already loading or loaded
+    if (loadingSummaries[itemIndex] || newsData[itemIndex].summary) return;
+
+    // Mark as loading
+    setLoadingSummaries(prev => ({ ...prev, [itemIndex]: true }));
+
+    const articles = newsData[itemIndex].newsArticle;
+
+    // Summarize articles
+    const summarized = await summarizeContent(articles);
+
+    // Update the news item with the summary and analysis
+    setNewsData(prevNewsData => {
+      const updatedNewsData = [...prevNewsData];
+      updatedNewsData[itemIndex] = {
+        ...updatedNewsData[itemIndex],
+        summary: summarized.summary,
+        analysis: summarized // Include keyFindings and riskFactors
+      };
+      return updatedNewsData;
+    });
+
+    // Mark as not loading
+    setLoadingSummaries(prev => ({ ...prev, [itemIndex]: false }));
+  };
+
+  const NewsItem = ({ item, index }) => {
     const [isExpanded, setIsExpanded] = useState(false);
-    const priceChangeColor = priceChange >= 0 
+    const priceChangeColor = item.priceChange >= 0 
       ? 'bg-green-50 text-green-600' 
       : 'bg-red-50 text-red-600';
-    const priceChangeText = `${(priceChange >= 0 ? '+' : '')}${priceChange.toFixed(1)}%`;
+    const priceChangeText = `${(item.priceChange >= 0 ? '+' : '')}${item.priceChange.toFixed(1)}%`;
     
     const getPrimaryTagColor = (type) => {
       const colors = {
@@ -118,7 +147,7 @@ const Dashboard = () => {
         'Environmental': 'bg-green-100 text-green-800',
         'Product': 'bg-yellow-100 text-yellow-800',
       };
-      return colors[type] || 'bg-gray-100 text-gray-800';
+      return colors[item.eventClassification?.primary_type] || 'bg-gray-100 text-gray-800';
     };
 
     const getSeverityColor = (severity) => {
@@ -129,26 +158,26 @@ const Dashboard = () => {
         4: 'text-orange-600',
         5: 'text-red-600'
       };
-      return colors[severity] || 'text-gray-600';
+      return colors[item.eventClassification?.severity] || 'text-gray-600';
     };
 
     // Use summary for bullet points if available, otherwise create fallback summary
-    const bulletPoints = Array.isArray(summary) ? summary : 
-      typeof summary === 'string' ? summary.split(';').filter(point => point.trim()) :
-      newsArticle.map(article => article.title).filter(Boolean);
+    const bulletPoints = Array.isArray(item.summary) ? item.summary : 
+      typeof item.summary === 'string' ? item.summary.split(';').filter(point => point.trim()) :
+      item.newsArticle.map(article => article.title).filter(Boolean);
 
     const summarizeAnalysis = () => {
       const allFindings = new Set();
       const allRisks = new Set();
       
-      if (Array.isArray(analysis)) {
-        analysis.forEach(a => {
+      if (Array.isArray(item.analysis)) {
+        item.analysis.forEach(a => {
           a.key_findings?.forEach(f => allFindings.add(f));
           a.risk_factors?.forEach(r => allRisks.add(r));
         });
-      } else if (analysis) {
-        analysis.key_findings?.forEach(f => allFindings.add(f));
-        analysis.risk_factors?.forEach(r => allRisks.add(r));
+      } else if (item.analysis) {
+        item.analysis.key_findings?.forEach(f => allFindings.add(f));
+        item.analysis.risk_factors?.forEach(r => allRisks.add(r));
       }
 
       return {
@@ -158,7 +187,7 @@ const Dashboard = () => {
     };
 
     const summarizeArticles = () => {
-      const articles = !Array.isArray(newsArticle) ? [newsArticle] : newsArticle;
+      const articles = !Array.isArray(item.newsArticle) ? [item.newsArticle] : item.newsArticle;
       return articles.reduce((acc, article) => {
         if (!article) return acc;
         const type = article.type || 'Other';
@@ -173,30 +202,36 @@ const Dashboard = () => {
 
     const { findings, risks } = summarizeAnalysis();
 
+    useEffect(() => {
+      if (isExpanded && !item.summary) {
+        summarizeArticle(index);
+      }
+    }, [isExpanded]);
+
     return (
       <div 
-        data-timestamp={timestamp}
+        data-timestamp={item.timestamp}
         className="p-4 bg-white rounded-lg shadow-sm mb-3 border-2 border-gray-100 hover:border-gray-200 cursor-pointer transition-colors duration-200"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex justify-between items-center mb-2">
-          <span className="text-gray-900 font-medium">{date}</span>
+          <span className="text-gray-900 font-medium">{item.date}</span>
           <span className={`px-3 py-1 rounded-full ${priceChangeColor} font-medium text-sm`}>
             {priceChangeText}
           </span>
         </div>
         
-        {eventClassification && (
+        {item.eventClassification && (
           <div className="mb-3">
             <div className="flex items-center gap-2">
-              {eventClassification.primary_type && (
-                <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${getPrimaryTagColor(eventClassification.primary_type)}`}>
-                  {eventClassification.primary_type}
+              {item.eventClassification.primary_type && (
+                <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${getPrimaryTagColor(item.eventClassification.primary_type)}`}>
+                  {item.eventClassification.primary_type}
                 </span>
               )}
-              {eventClassification.sub_type && (
+              {item.eventClassification.sub_type && (
                 <span className="text-xs text-gray-500">
-                  {eventClassification.sub_type}
+                  {item.eventClassification.sub_type}
                 </span>
               )}
             </div>
@@ -204,8 +239,8 @@ const Dashboard = () => {
         )}
 
         <ul className="text-gray-900 space-y-1 pl-5 list-disc mb-3">
-          {bulletPoints.map((point, index) => (
-            <li key={index} className="text-sm">
+          {bulletPoints.map((point, idx) => (
+            <li key={idx} className="text-sm">
               {point.trim()}
             </li>
           ))}
@@ -213,100 +248,107 @@ const Dashboard = () => {
 
         {isExpanded && (
           <div className="mt-4 pt-4 border-t border-gray-100">
-            {totalArticles > 0 && (
-              <div className="mb-4">
-                <h4 className="text-sm font-semibold mb-2">Related Articles ({totalArticles})</h4>
-                {Object.entries(articles).map(([type, typeArticles]) => (
-                  <div key={type} className="mb-4">
-                    <h5 className="text-xs font-medium text-gray-600 mb-2">{type} ({typeArticles.length})</h5>
-                    <div className="space-y-3">
-                      {typeArticles.map((article, idx) => (
-                        <div key={idx} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                          <div className="space-y-1 text-sm">
-                            {article?.title && (
-                              <p>
-                                <span className="font-medium">Title: </span>
-                                {article.url ? (
-                                  <a 
-                                    href={article.url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:underline"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {article.title}
-                                  </a>
-                                ) : (
-                                  article.title
+            {loadingSummaries[index] && (
+              <div className="text-sm text-gray-500">Loading summary...</div>
+            )}
+            {!loadingSummaries[index] && (
+              <>
+                {totalArticles > 0 && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold mb-2">Related Articles ({totalArticles})</h4>
+                    {Object.entries(articles).map(([type, typeArticles]) => (
+                      <div key={type} className="mb-4">
+                        <h5 className="text-xs font-medium text-gray-600 mb-2">{type} ({typeArticles.length})</h5>
+                        <div className="space-y-3">
+                          {typeArticles.map((article, idx) => (
+                            <div key={idx} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                              <div className="space-y-1 text-sm">
+                                {article?.title && (
+                                  <p>
+                                    <span className="font-medium">Title: </span>
+                                    {article.url ? (
+                                      <a 
+                                        href={article.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {article.title}
+                                      </a>
+                                    ) : (
+                                      article.title
+                                    )}
+                                  </p>
                                 )}
-                              </p>
-                            )}
-                            {article?.source && <p><span className="font-medium">Source: </span>{article.source}</p>}
-                            {article?.publishedDate && (
-                              <p>
-                                <span className="font-medium">Published: </span>
-                                {formatDate(article.publishedDate)}
-                              </p>
-                            )}
-                          </div>
+                                {article?.source && <p><span className="font-medium">Source: </span>{article.source}</p>}
+                                {article?.publishedDate && (
+                                  <p>
+                                    <span className="font-medium">Published: </span>
+                                    {formatDate(article.publishedDate)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {(findings.length > 0 || risks.length > 0) && (
-              <div className="mb-4">
-                <h4 className="text-sm font-semibold mb-2">Analysis Summary</h4>
-                {findings.length > 0 && (
-                  <div className="mb-2">
-                    <p className="text-xs font-medium text-gray-600 mb-1">Key Findings:</p>
-                    <ul className="list-disc pl-4 space-y-1">
-                      {findings.map((finding, index) => (
-                        <li key={index} className="text-sm">{finding}</li>
-                      ))}
-                    </ul>
+                      </div>
+                    ))}
                   </div>
                 )}
-                {risks.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-gray-600 mb-1">Risk Factors:</p>
-                    <ul className="list-disc pl-4 space-y-1">
-                      {risks.map((risk, index) => (
-                        <li key={index} className="text-sm text-red-600">{risk}</li>
-                      ))}
-                    </ul>
+
+                {(findings.length > 0 || risks.length > 0) && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold mb-2">Analysis Summary</h4>
+                    {findings.length > 0 && (
+                      <div className="mb-2">
+                        <p className="text-xs font-medium text-gray-600 mb-1">Key Findings:</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          {findings.map((finding, index) => (
+                            <li key={index} className="text-sm">{finding}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {risks.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1">Risk Factors:</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          {risks.map((risk, index) => (
+                            <li key={index} className="text-sm text-red-600">{risk}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {marketEvent && marketEvent.type && (
-              <div className="mb-4">
-                <h4 className="text-sm font-semibold mb-2">Event Details</h4>
-                <p className="text-sm"><span className="font-medium">Type:</span> {marketEvent.type}</p>
-              </div>
+                {item.marketEvent && item.marketEvent.type && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold mb-2">Event Details</h4>
+                    <p className="text-sm"><span className="font-medium">Type:</span> {item.marketEvent.type}</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
 
-        {eventClassification && (
+        {item.eventClassification && (
           <div className="flex items-center gap-3 text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
-            {eventClassification.severity && (
-              <span className={`${getSeverityColor(eventClassification.severity)}`}>
-                Severity {eventClassification.severity}
+            {item.eventClassification.severity && (
+              <span className={`${getSeverityColor(item.eventClassification.severity)}`}>
+                Severity {item.eventClassification.severity}
               </span>
             )}
-            {eventClassification.confidence && (
+            {item.eventClassification.confidence && (
               <span>
-                {Math.round(eventClassification.confidence * 100)}% confidence
+                {Math.round(item.eventClassification.confidence * 100)}% confidence
               </span>
             )}
-            {eventClassification.impact_duration && (
+            {item.eventClassification.impact_duration && (
               <span>
-                {eventClassification.impact_duration.replace(/_/g, ' ').toLowerCase()}
+                {item.eventClassification.impact_duration.replace(/_/g, ' ').toLowerCase()}
               </span>
             )}
           </div>
@@ -578,14 +620,8 @@ const Dashboard = () => {
                 {newsData.map((item, index) => (
                   <NewsItem
                     key={`${item.timestamp}-${index}`}
-                    timestamp={item.timestamp}
-                    date={item.date}
-                    summary={item.summary}
-                    priceChange={item.priceChange}
-                    eventClassification={item.eventClassification}
-                    newsArticle={item.newsArticle}
-                    analysis={item.analysis}
-                    marketEvent={item.marketEvent}
+                    item={item}      // Pass the news item
+                    index={index}    // Pass the index
                   />
                 ))}
               </div>
