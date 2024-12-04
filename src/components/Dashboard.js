@@ -3,6 +3,83 @@ import KlineChart from './KlineChart';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
+const MAX_MODEL_CHARS = 4000;
+
+const summarizeContent = async (articles, config = {
+  type: 'key-points',
+  format: 'plain-text',
+  length: 'short'
+}) => {
+  try {
+    if (!window.ai || !window.ai.summarizer) {
+      throw new Error('AI Summarization is not supported in this browser');
+    }
+
+    // Prepare the content to summarize
+    const content = articles.map(article => {
+      return `
+Title: ${article.title || 'N/A'}
+Source: ${article.source || 'N/A'}
+Content: ${article.content || ''}
+      `.trim();
+    }).join('\n\n');
+
+    if (content.length > MAX_MODEL_CHARS) {
+      console.warn('Content too long for summarization, truncating...');
+      return {
+        summary: 'Content too long for detailed summarization',
+        keyFindings: [],
+        riskFactors: []
+      };
+    }
+
+    // Create summarizer session
+    const session = await window.ai.summarizer.create({
+      ...config,
+      language: 'en' // Force English output
+    });
+    await session.ready;
+
+    // Generate summary
+    const summary = await session.summarize(content);
+    session.destroy();
+
+    // Parse the summary into structured format, focusing on key points only
+    const sections = summary.split('\n\n').reduce((acc, section) => {
+      if (section.startsWith('Key Findings:')) {
+        acc.keyFindings = section
+          .replace('Key Findings:', '')
+          .split('\n')
+          .map(point => point.trim())
+          .filter(point => point)
+          // Filter out points starting with - or * and remove any leading special characters
+          .map(point => point.replace(/^[-*•\s]+/, ''))
+          .filter(point => /^[A-Za-z0-9]/.test(point)); // Only keep points starting with alphanumeric
+      } else {
+        // Use the main summary as bullet points
+        acc.summary = section.trim()
+          .split('\n')
+          .map(point => point.trim())
+          .filter(point => point)
+          // Filter out points starting with - or * and remove any leading special characters
+          .map(point => point.replace(/^[-*•\s]+/, ''))
+          .filter(point => /^[A-Za-z0-9]/.test(point)); // Only keep points starting with alphanumeric
+      }
+      return acc;
+    }, { summary: [], keyFindings: [] });
+
+    return sections;
+
+  } catch (e) {
+    console.error('Summarization failed:', e);
+    // Return article titles as fallback summary
+    return {
+      summary: articles.map(article => article.title).filter(Boolean),
+      keyFindings: []
+    };
+  }
+};
+
 const Dashboard = () => {
   const [symbol, setSymbol] = useState('OXY');
   const [klineData, setKlineData] = useState([]);
@@ -55,9 +132,10 @@ const Dashboard = () => {
       return colors[severity] || 'text-gray-600';
     };
 
-    const bulletPoints = typeof summary === 'string' 
-      ? summary.split(';').filter(point => point.trim())
-      : Array.isArray(summary) ? summary : [];
+    // Use summary for bullet points if available, otherwise create fallback summary
+    const bulletPoints = Array.isArray(summary) ? summary : 
+      typeof summary === 'string' ? summary.split(';').filter(point => point.trim()) :
+      newsArticle.map(article => article.title).filter(Boolean);
 
     const summarizeAnalysis = () => {
       const allFindings = new Set();
@@ -309,124 +387,61 @@ const Dashboard = () => {
         if (newsResult.success && newsResult.data) {
           console.log('[News] Processing news data...');
           
-          // Extract and sort news items with bullet point summaries
-          const newsItems = Object.entries(newsResult.data)
-            .map(([date, data]) => {
+          // Modify the news processing part in validateAndFetchData
+          const newsItems = await Promise.all(Object.entries(newsResult.data)
+            .map(async ([date, data]) => {
               if (!Array.isArray(data.news) || data.news.length === 0) {
                 return null;
               }
 
-              // Aggregate all key points and information across articles
-              const aggregatedData = data.news.reduce((acc, article) => {
-                // Combine key points - limit to most important ones
-                const keyPoints = article.market_event?.key_points || [];
-                // Only add new unique points and limit to 3-4 most significant ones
-                const newPoints = keyPoints.filter(point => 
-                  !acc.summary.some(existing => 
-                    existing.toLowerCase().includes(point.toLowerCase()) ||
-                    point.toLowerCase().includes(existing.toLowerCase())
-                  )
-                );
-                acc.summary = [...acc.summary, ...newPoints].slice(0, 4); // Limit to 4 key points
+              // Prepare articles for summarization
+              const articles = data.news.map(article => ({
+                title: article.news_article?.title,
+                source: article.news_article?.source,
+                content: article.news_article?.content,
+                publishedDate: article.news_article?.publishedDate,
+                url: article.news_article?.url,
+                analysis: article.analysis // Include analysis data
+              }));
 
-                // Combine analysis - keep only the most significant findings and risks
-                if (article.analysis) {
-                  // Add unique key findings, prioritizing ones with important keywords
-                  const importantKeywords = ['significant', 'major', 'critical', 'substantial', 'key'];
-                  const newFindings = (article.analysis.key_findings || [])
-                    .filter(finding => 
-                      !acc.analysis.key_findings.some(existing => 
-                        existing.toLowerCase().includes(finding.toLowerCase())
-                      ) &&
-                      (importantKeywords.some(keyword => 
-                        finding.toLowerCase().includes(keyword)
-                      ) || acc.analysis.key_findings.length < 2)
-                    );
-                  acc.analysis.key_findings = [...acc.analysis.key_findings, ...newFindings].slice(0, 2);
+              // Generate summary using on-device AI
+              const summarized = await summarizeContent(articles);
 
-                  // Add unique risk factors, prioritizing high-impact ones
-                  const newRisks = (article.analysis.risk_factors || [])
-                    .filter(risk => 
-                      !acc.analysis.risk_factors.some(existing => 
-                        existing.toLowerCase().includes(risk.toLowerCase())
-                      ) &&
-                      (importantKeywords.some(keyword => 
-                        risk.toLowerCase().includes(keyword)
-                      ) || acc.analysis.risk_factors.length < 2)
-                    );
-                  acc.analysis.risk_factors = [...acc.analysis.risk_factors, ...newRisks].slice(0, 2);
-                }
+              // Combine key findings and risk factors from the original analysis data
+              const allFindings = new Set();
+              const allRisks = new Set();
 
-                // Collect only the most relevant news articles
-                const articleInfo = {
-                  title: article.news_article?.title,
-                  source: article.news_article?.source,
-                  type: article.news_article?.type,
-                  publishedDate: article.news_article?.publishedDate,
-                  url: article.news_article?.url
-                };
-
-                // Prioritize articles from major sources or with complete information
-                const majorSources = ['Bloomberg', 'Reuters', 'CNBC', 'WSJ', 'Financial Times'];
-                if (
-                  majorSources.some(source => articleInfo.source?.includes(source)) ||
-                  (articleInfo.title && articleInfo.url) ||
-                  acc.news_articles.length < 2
-                ) {
-                  acc.news_articles.push(articleInfo);
-                }
-                acc.news_articles = acc.news_articles.slice(0, 3); // Limit to 3 most relevant articles
-
-                // Take the highest severity and most confident classifications
-                if (article.event_classification) {
-                  if (article.event_classification.confidence > acc.eventClassification.confidence) {
-                    acc.eventClassification.severity = article.event_classification.severity;
-                    acc.eventClassification.confidence = article.event_classification.confidence;
-                    acc.eventClassification.primary_types = new Set([article.event_classification.primary_type]);
-                    acc.eventClassification.sub_types = new Set([article.event_classification.sub_type]);
-                    acc.eventClassification.impact_durations = new Set([article.event_classification.impact_duration]);
-                  }
-                }
-
-                return acc;
-              }, {
-                summary: [],
-                analysis: { key_findings: [], risk_factors: [] },
-                news_articles: [],
-                eventClassification: {
-                  primary_types: new Set(),
-                  sub_types: new Set(),
-                  impact_durations: new Set(),
-                  severity: 0,
-                  confidence: 0
-                }
+              articles.forEach(article => {
+                article.analysis?.key_findings?.forEach(finding => allFindings.add(finding));
+                article.analysis?.risk_factors?.forEach(risk => allRisks.add(risk));
               });
 
-              // Get the timestamp from the first article (they should be for same inflection point)
-              const timestamp = new Date(data.news[0].news_article.publishedDate).getTime();
-
               return {
-                timestamp,
+                timestamp: new Date(data.news[0].news_article.publishedDate).getTime(),
                 date: formatDate(data.news[0].news_article.publishedDate),
-                summary: aggregatedData.summary,
+                summary: summarized.summary,
+                analysis: {
+                  key_findings: Array.from(allFindings),
+                  risk_factors: Array.from(allRisks)
+                },
                 priceChange: data.inflection?.price_change || 0,
                 eventClassification: {
-                  primary_type: Array.from(aggregatedData.eventClassification.primary_types).join(', '),
-                  sub_type: Array.from(aggregatedData.eventClassification.sub_types).join(', '),
-                  severity: aggregatedData.eventClassification.severity,
-                  confidence: aggregatedData.eventClassification.confidence,
-                  impact_duration: Array.from(aggregatedData.eventClassification.impact_durations).join(', ')
+                  primary_type: data.news[0].event_classification?.primary_type,
+                  sub_type: data.news[0].event_classification?.sub_type,
+                  severity: Math.max(...data.news.map(n => n.event_classification?.severity || 0)),
+                  confidence: Math.max(...data.news.map(n => n.event_classification?.confidence || 0)),
+                  impact_duration: data.news[0].event_classification?.impact_duration
                 },
-                newsArticle: aggregatedData.news_articles,
-                analysis: aggregatedData.analysis,
-                market_event: data.news[0].market_event // Keep the market event type from first article
+                newsArticle: articles,
+                marketEvent: data.news[0].market_event
               };
-            })
-            .filter(Boolean) // Remove null entries
+            }));
+
+          const validNewsItems = newsItems
+            .filter(Boolean)
             .sort((a, b) => b.timestamp - a.timestamp);
 
-          console.log('[News] Sorted news items with summaries:', newsItems);
-          setNewsData(newsItems);
+          setNewsData(validNewsItems);
         } else {
           console.warn('[News] News data not available or invalid:', newsResult);
           setNewsData([]);
